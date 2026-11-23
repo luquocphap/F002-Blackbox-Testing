@@ -14,10 +14,26 @@ from unittest.mock import Mock, call, patch
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from automation import main, read_test_data, rejected, run_functional
+from automation import Moodle, main, read_test_data, rejected, run_functional
 
 
 class RunnerTests(unittest.TestCase):
+    def test_login_waits_for_the_password_control_moodle_replaces(self):
+        for toggles_password in (True, False):
+            with self.subTest(toggles_password=toggles_password):
+                page = Moodle(Mock(), {}, Mock())
+                page.go = Mock()
+                page.elements = Mock(return_value=[Mock()] if toggles_password else [])
+                fields = {name: Mock() for name in ("login_user", "login_password", "login_password_ready", "logged_in")}
+                page.element = Mock(side_effect=fields.__getitem__)
+                page.click = Mock()
+                page.login("user", "test-only")
+                password = "login_password_ready" if toggles_password else "login_password"
+                self.assertEqual(page.element.call_args_list, [
+                    call(password), call("login_user"), call("logged_in"),
+                ])
+                fields[password].send_keys.assert_called_once_with("test-only")
+
     def test_discovery_collects_all_original_ids(self):
         expected = {f"TC-002-{n:03d}" for n in range(1, 29)} | {"NFR-002-001", "NFR-002-002"}
         loader = unittest.TestLoader()

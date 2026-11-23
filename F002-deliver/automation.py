@@ -163,8 +163,11 @@ class Moodle:
 
     def login(self, username, password):
         self.go("login_url")
+        # Moodle initializes the optional visibility toggle by replacing the password input.
+        password_field = "login_password_ready" if self.elements("login_password_toggle_init") else "login_password"
+        password_input = self.element(password_field)
         self.element("login_user").send_keys(username)
-        self.element("login_password").send_keys(password)
+        password_input.send_keys(password)
         self.click("login_button")
         self.element("logged_in")
 

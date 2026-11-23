@@ -9,6 +9,8 @@ UI = {
     'grader_url': ('url', '/grade/report/grader/index.php?id={courseid}'),
     'login_user': ('id', 'username'),
     'login_password': ('id', 'password'),
+    'login_password_toggle_init': ('xpath', '//script[contains(., \'ToggleSensitive.init("password"\')]'),
+    'login_password_ready': ('css selector', '.toggle-sensitive-wrapper #password'),
     'login_button': ('id', 'loginbtn'),
     'logged_in': ('id', 'user-menu-toggle'),
     'main': ('css selector', '[role=main]'),
