@@ -17,7 +17,9 @@ from urllib.request import urlopen
 
 from selenium import webdriver
 from selenium.common.exceptions import (
+    ElementClickInterceptedException,
     StaleElementReferenceException,
+    TimeoutException,
     WebDriverException,
 )
 from selenium.webdriver.chrome.service import Service
@@ -149,22 +151,38 @@ class Moodle:
         return self.wait.until(lambda _: self.visible(name, **values), f"waiting for {name} {values}")
 
     def click(self, name, **values):
+        last_interception = None
+
         def activate(_):
+            nonlocal last_interception
             el = self.visible(name, **values)
             if el is None or not el.is_enabled():
                 return False
-            el.click()
+            try:
+                el.click()
+            except ElementClickInterceptedException as error:
+                # Re-find the element while Moodle replaces or repositions the table.
+                last_interception = error
+                return False
             return True
 
-        self.wait.until(activate, f"waiting to click {name}")
+        try:
+            self.wait.until(activate, f"waiting to click {name}")
+        except TimeoutException:
+            if last_interception is not None:
+                raise last_interception from None
+            raise
 
     def go(self, page):
         self.driver.get(self.url(page))
 
     def login(self, username, password):
         self.go("login_url")
+        # Moodle initializes the optional visibility toggle by replacing the password input.
+        password_field = "login_password_ready" if self.elements("login_password_toggle_init") else "login_password"
+        password_input = self.element(password_field)
         self.element("login_user").send_keys(username)
-        self.element("login_password").send_keys(password)
+        password_input.send_keys(password)
         self.click("login_button")
         self.element("logged_in")
 
