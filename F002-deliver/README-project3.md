@@ -52,6 +52,22 @@ Nếu Moodle cài ở thư mục khác, thêm `-e F002_MOODLE_ROOT=/đường/d�
 
 Dùng `--list` để xem mã testcase. Để chạy nhóm đầu, thêm `--case TC-002-005 --case TC-002-006 --case TC-002-007 --case TC-002-012` vào lệnh của từng level. Mỗi case tự đăng nhập Admin và mở trang Participants của course đã được setup. Runner trả mã thoát 1 nếu có FAIL hoặc BLOCKED. TC-002-013 trả OBSERVED khi đã thu được phản hồi và trạng thái lưu. TC-002-026 đọc điểm trong Grader report.
 
+### Chạy bằng unittest discovery
+
+Mỗi dòng CSV là một `unittest.TestCase` mang mã gốc. Discovery thu thập 30 ca mỗi level, gồm 28 ca chức năng và 2 ca phi chức năng. Cả hai cách chạy kiểm tra đủ bộ ID, kể cả khi dùng bộ lọc. CSV có ID thiếu, trùng hoặc ngoài bộ ca sẽ làm lệnh trả mã thoát khác 0.
+
+```bash
+F002_FIXTURES=.project3-local/setup-level1.txt python -m unittest discover -s level1 -v
+# Cleanup rồi setup và lưu stdout mới trước Level 2.
+F002_FIXTURES=.project3-local/setup-level2.txt python -m unittest discover -s level2 -v
+```
+
+Dùng `-k TC-002-024` để chọn ca. Nếu thiếu fixture hoặc thông tin đăng nhập, unittest hiển thị ca là `skipped` với lý do `BLOCKED`. TC-002-013 hiển thị `skipped` với lý do `OBSERVED` và ghi nhận thực tế. Dùng lệnh Python trực tiếp ở trên nếu cần báo cáo JSON và mã thoát 1 khi có BLOCKED.
+
+Các ca TC-002-012, 015 và lần submit đầu của 024 kiểm tra Participants trong tab mới sau khi xác nhận lỗi. Tab ban đầu giữ phiên bản form hiện tại để TC-002-024 có thể sửa ngày.
+
+Chạy kiểm tra hồi quy cho discovery, CSV và luồng đọc Participants mà không cần Moodle bằng `python -m unittest discover -s checks -v`.
+
 `.project3-local/` dùng cho setup output, kết quả JSON và log của mỗi lượt. Mật khẩu chỉ cung cấp qua biến môi trường.
 
 ## Kiểm thử phi chức năng
@@ -76,3 +92,5 @@ Moodle 5.1.9+ (Build 20261117), Chrome headless 158.0.8127.36 và Selenium 4.53.
 | NFR-002-002, chọn bằng bàn phím | PASS, đúng email | PASS, đúng email |
 
 Hai lượt đều có 0 FAIL và 0 BLOCKED. Số đo của NFR-002-001 là một lần đo trên mỗi lượt local. Cleanup cuối lượt báo đủ 28/28.
+
+Sau khi chuyển sang unittest, discovery thu thập 30 ca mỗi level. Nhóm xác minh TC-002-012, 013, 015 và 024 chạy lại trên fixture riêng cho mỗi level. Level 1 chạy bằng discovery, Level 2 chạy bằng CLI với `--case` và xuất JSON. Mỗi lượt ghi nhận 3 PASS và 1 OBSERVED ở TC-002-013.

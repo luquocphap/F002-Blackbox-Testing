@@ -5,8 +5,11 @@ import csv
 import json
 import os
 import re
+import unittest
+from collections import Counter
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+from fnmatch import fnmatchcase
 from pathlib import Path
 from time import perf_counter
 from urllib.parse import urljoin
@@ -28,6 +31,7 @@ FIXTURE_ROW = re.compile(
     r"username_prefix=([a-z0-9_]+); S=(.+) UTC; prepared_at=(\d+)$"
 )
 FUNCTIONAL_IDS = {f"TC-002-{n:03d}" for n in range(1, 29)}
+CASE_IDS = FUNCTIONAL_IDS | {"NFR-002-001", "NFR-002-002"}
 
 
 class Blocked(Exception):
@@ -37,6 +41,22 @@ class Blocked(Exception):
 def read_csv(path):
     with path.open(encoding="utf-8-sig", newline="") as stream:
         return list(csv.DictReader(stream))
+
+
+def read_test_data(path):
+    rows = read_csv(path)
+    counts = Counter(row.get("id") for row in rows)
+    missing = sorted(CASE_IDS - counts.keys())
+    invalid = sorted(repr(case_id) for case_id in counts.keys() - CASE_IDS)
+    duplicate = sorted(repr(case_id) for case_id, count in counts.items() if count > 1)
+    problems = [
+        f"{label} IDs: {', '.join(ids)}"
+        for label, ids in (("missing", missing), ("duplicate", duplicate), ("invalid", invalid))
+        if ids
+    ]
+    if problems:
+        raise ValueError(f"{path.name}: " + ". ".join(problems))
+    return rows
 
 
 def check(actual, expected, label):
@@ -317,13 +337,21 @@ def rejected(page, message, count, users):
     page.click("save")
     actual = page.expect_text("alert", message, message=message)
     print(f"  Validation: {actual}", flush=True)
-    if not page.visible("modal"):
-        # Confirm the baseline after the request, even if the table was left unchanged.
+    driver = page.driver
+    original = driver.current_window_handle
+    driver.switch_to.new_window("tab")
+    try:
         page.go("participants_url")
-    page.expect_count(count)
-    for user in users:
-        check(len(page.elements("participant_row", email=page.fixture.email(user))),
-              0, f"rows after rejected submit for {user}")
+        page.expect_text("course_heading", page.fixture.course)
+        check(page.count(), int(count), "participant count after rejected submit")
+        for user in users:
+            check(len(page.elements("participant_row", email=page.fixture.email(user))),
+                  0, f"rows after rejected submit for {user}")
+    finally:
+        try:
+            driver.close()
+        finally:
+            driver.switch_to.window(original)
 
 
 def search_case(page, data):
@@ -384,14 +412,16 @@ def run_functional(page, data, credentials):
         if flow == "observe":
             return "OBSERVED", observe(page, users)
         if flow in ("reject", "retry"):
-            rejected(page, data["expected_error"], data["baseline"], users)
-            if flow == "retry":
-                if page.visible("modal"):
-                    page.write_date("end_part", page.fixture.date(data["retry_end_at"]))
-                else:
-                    page.open_form()
-                    page.fill_form(data, users, data["retry_end_at"])
-                page.close_form("save")
+            expected_count = data["expected_count"] if flow == "reject" else data["baseline"]
+            rejected(page, data["expected_error"], expected_count, users)
+            if flow == "reject":
+                return "PASS", ""
+            if page.visible("modal"):
+                page.write_date("end_part", page.fixture.date(data["retry_end_at"]))
+            else:
+                page.open_form()
+                page.fill_form(data, users, data["retry_end_at"])
+            page.close_form("save")
         else:
             page.close_form("cancel" if flow == "cancel" else "save")
 
@@ -463,78 +493,166 @@ def create_browser(args):
     return driver
 
 
-def main(directory, config_from_file=None, config=None):
+@dataclass(frozen=True)
+class BrowserOptions:
+    fixtures: Path | None
+    headed: bool
+    chrome_binary: str | None
+    driver: str | None
+
+    @classmethod
+    def from_env(cls):
+        fixtures = os.environ.get("F002_FIXTURES")
+        return cls(
+            Path(fixtures) if fixtures else None,
+            False,
+            os.environ.get("F002_CHROME_BINARY"),
+            os.environ.get("F002_CHROMEDRIVER"),
+        )
+
+
+def error_detail(error):
+    return str(error).splitlines()[0] or type(error).__name__
+
+
+def build_suite(module_name, rows, config, options):
+    class EnrolUserCase(unittest.TestCase):
+        def __init__(self, data):
+            super().__init__(f"test_{data['id']}")
+            self.data = data
+            self.status = "PASS"
+            self.detail = ""
+
+        def id(self):
+            return f"{module_name}.EnrolUserCase.{self.data['id']}"
+
+        def __str__(self):
+            return self.id()
+
+        @classmethod
+        def setUpClass(cls):
+            cls.blocked_reason = None
+            try:
+                cls.config = config()
+                if options.fixtures is None:
+                    raise Blocked("Set F002_FIXTURES to the stdout captured from setup-all.php")
+                cls.fixtures = read_fixtures(options.fixtures)
+                cls.credentials = {
+                    name: os.environ.get(f"F002_{name.upper()}")
+                    for name in ("admin_user", "admin_password", "student_password")
+                }
+                for name in ("admin_user", "admin_password"):
+                    if not cls.credentials[name]:
+                        raise Blocked(f"Set F002_{name.upper()} before running")
+                with urlopen(cls.config["base_url"][1], timeout=5):
+                    pass
+                cls.driver = create_browser(options)
+                cls.addClassCleanup(cls.driver.quit)
+            except (Blocked, OSError, ValueError, KeyError, csv.Error, WebDriverException) as error:
+                cls.blocked_reason = error_detail(error)
+
+        def skip_with_status(self, status, detail):
+            self.status = status
+            self.detail = detail
+            self.skipTest(f"{status} | {detail}")
+
+        def setUp(self):
+            if self.blocked_reason:
+                self.skip_with_status("BLOCKED", self.blocked_reason)
+            if self.data["expected_access"] and not self.credentials["student_password"]:
+                self.skip_with_status("BLOCKED", "Set F002_STUDENT_PASSWORD before running")
+            try:
+                fixture = self.fixtures[self.data["fixture_id"] or self.data["id"]]
+                self.page = Moodle(self.driver, self.config, fixture)
+                self.page.prepare(self.credentials, self.data["baseline"])
+            except (AssertionError, ValueError, KeyError, WebDriverException) as error:
+                self.skip_with_status("BLOCKED", error_detail(error))
+
+        def runTest(self):
+            if self.data["id"] in FUNCTIONAL_IDS:
+                status, self.detail = run_functional(self.page, self.data, self.credentials)
+            else:
+                status, self.detail = run_nonfunctional(self.page, self.data)
+            if status == "OBSERVED":
+                self.skip_with_status(status, self.detail)
+
+    for row in rows:
+        setattr(EnrolUserCase, f"test_{row['id']}", EnrolUserCase.runTest)
+    return unittest.TestSuite(EnrolUserCase(row) for row in rows)
+
+
+def discover_cases(loader, module_name, data_path, config):
+    rows = read_test_data(data_path)
+    suite = build_suite(module_name, rows, config, BrowserOptions.from_env())
+    if loader.testNamePatterns:
+        return unittest.TestSuite(
+            case for case in suite if any(fnmatchcase(case.id(), pattern) for pattern in loader.testNamePatterns)
+        )
+    return suite
+
+
+class EnrolResult(unittest.TestResult):
+    """Record unittest outcomes using the CLI's per-case result format."""
+
+    def __init__(self):
+        super().__init__()
+        self.cases = []
+
+    def record(self, test, status, detail=""):
+        case_id = test.id().rsplit(".", 1)[-1]
+        print(f"{case_id} {status}" + (f" | {detail}" if detail else ""), flush=True)
+        self.cases.append({"id": case_id, "status": status, "detail": detail})
+
+    def addSuccess(self, test):
+        super().addSuccess(test)
+        self.record(test, "PASS", test.detail)
+
+    def addFailure(self, test, err):
+        super().addFailure(test, err)
+        self.record(test, "FAIL", error_detail(err[1]))
+
+    def addError(self, test, err):
+        super().addError(test, err)
+        self.record(test, "FAIL", error_detail(err[1]))
+
+    def addSkip(self, test, reason):
+        super().addSkip(test, reason)
+        self.record(test, test.status, test.detail)
+
+
+def main(module_name, data_path, config):
+    defaults = BrowserOptions.from_env()
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--fixtures", type=Path, help="Captured stdout from setup-all.php")
+    parser.add_argument("--fixtures", type=Path, default=defaults.fixtures, help="Captured stdout from setup-all.php")
     parser.add_argument("--case", action="append", metavar="ID", help="Limit to these IDs (repeatable)")
     parser.add_argument("--list", action="store_true", help="List IDs without opening Moodle")
     parser.add_argument("--headed", action="store_true")
-    parser.add_argument("--chrome-binary", default=os.environ.get("F002_CHROME_BINARY"))
-    parser.add_argument("--driver", default=os.environ.get("F002_CHROMEDRIVER"))
+    parser.add_argument("--chrome-binary", default=defaults.chrome_binary)
+    parser.add_argument("--driver", default=defaults.driver)
     parser.add_argument("--results", type=Path, help="Write per-case JSON results")
     args = parser.parse_args()
-    data = read_csv(directory / "test_data.csv")
+
+    try:
+        rows = read_test_data(data_path)
+    except (OSError, ValueError, csv.Error) as error:
+        parser.error(str(error))
     if args.case:
-        unknown = set(args.case) - {row["id"] for row in data}
+        unknown = set(args.case) - CASE_IDS
         if unknown:
             parser.error(f"unknown case IDs: {', '.join(sorted(unknown))}")
-        data = [row for row in data if row["id"] in args.case]
+        rows = [row for row in rows if row["id"] in args.case]
     if args.list:
-        print("\n".join(row["id"] for row in data))
+        print("\n".join(row["id"] for row in rows))
         return 0
     if args.fixtures is None:
-        parser.error("--fixtures is required for a run")
+        parser.error("--fixtures or F002_FIXTURES is required for a run")
 
-    results = []
-
-    def record(row, status, detail=""):
-        print(f"{row['id']} {status}" + (f" | {detail}" if detail else ""), flush=True)
-        results.append({"id": row["id"], "status": status, "detail": detail})
-
-    driver = None
-    try:
-        if config_from_file:
-            config = {row["name"]: (row["type"], row["value"]) for row in read_csv(config_from_file)}
-        fixtures = read_fixtures(args.fixtures)
-        credentials = {name: os.environ.get(f"F002_{name.upper()}") for name in
-                       ("admin_user", "admin_password", "student_password")}
-        needed = ["admin_user", "admin_password"]
-        if any(row["expected_access"] for row in data):
-            needed.append("student_password")
-        for name in needed:
-            if not credentials[name]:
-                raise Blocked(f"Set F002_{name.upper()} before running")
-        with urlopen(config["base_url"][1], timeout=5):
-            pass
-        driver = create_browser(args)
-    except (Blocked, OSError, ValueError, KeyError, csv.Error, WebDriverException) as error:
-        for row in data:
-            record(row, "BLOCKED", str(error).splitlines()[0] or type(error).__name__)
-
-    if driver is not None:
-        try:
-            for row in data:
-                print(f"Running {row['id']}", flush=True)
-                try:
-                    fixture = fixtures[row.get("fixture_id") or row["id"]]
-                    page = Moodle(driver, config, fixture)
-                    page.prepare(credentials, row["baseline"])
-                except (AssertionError, ValueError, KeyError, WebDriverException) as error:
-                    record(row, "BLOCKED", str(error).splitlines()[0] or type(error).__name__)
-                    continue
-                try:
-                    if row["id"] in FUNCTIONAL_IDS:
-                        status, detail = run_functional(page, row, credentials)
-                    else:
-                        status, detail = run_nonfunctional(page, row)
-                    record(row, status, detail)
-                except (AssertionError, ValueError, KeyError, WebDriverException) as error:
-                    record(row, "FAIL", str(error).splitlines()[0] or type(error).__name__)
-        finally:
-            driver.quit()
+    options = BrowserOptions(args.fixtures, args.headed, args.chrome_binary, args.driver)
+    result = EnrolResult()
+    build_suite(module_name, rows, config, options).run(result)
     if args.results:
         args.results.parent.mkdir(parents=True, exist_ok=True)
-        args.results.write_text(json.dumps(results, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    statuses = [row["status"] for row in results]
-    print(", ".join(f"{status}={statuses.count(status)}" for status in ("PASS", "FAIL", "OBSERVED", "BLOCKED")))
-    return 1 if {"FAIL", "BLOCKED"} & set(statuses) else 0
+        args.results.write_text(json.dumps(result.cases, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    counts = Counter(case["status"] for case in result.cases)
+    print(", ".join(f"{status}={counts[status]}" for status in ("PASS", "FAIL", "OBSERVED", "BLOCKED")))
+    return int(not result.wasSuccessful() or counts["BLOCKED"] > 0)
