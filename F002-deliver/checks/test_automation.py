@@ -11,6 +11,9 @@ from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from unittest.mock import Mock, call, patch
 
+from selenium.common.exceptions import ElementClickInterceptedException
+from selenium.webdriver.support.ui import WebDriverWait
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
@@ -18,6 +21,32 @@ from automation import Moodle, main, read_test_data, rejected, run_functional
 
 
 class RunnerTests(unittest.TestCase):
+    def test_click_refinds_element_after_interception(self):
+        page = Moodle(Mock(), {}, Mock())
+        page.wait = WebDriverWait(page.driver, 0.2, poll_frequency=0.01)
+        before_refresh = Mock()
+        before_refresh.click.side_effect = ElementClickInterceptedException("main intercepted click")
+        after_refresh = Mock()
+        page.visible = Mock(side_effect=[before_refresh, after_refresh])
+
+        page.click("edit_enrolment", email="u1@example.invalid")
+
+        locator_call = call("edit_enrolment", email="u1@example.invalid")
+        self.assertEqual(page.visible.call_args_list, [locator_call, locator_call])
+        before_refresh.click.assert_called_once_with()
+        after_refresh.click.assert_called_once_with()
+
+    def test_click_fails_if_target_remains_obstructed(self):
+        page = Moodle(Mock(), {}, Mock())
+        page.wait = WebDriverWait(page.driver, 0.03, poll_frequency=0.01)
+        link = Mock()
+        link.click.side_effect = ElementClickInterceptedException("main intercepted click")
+        page.visible = Mock(return_value=link)
+
+        with self.assertRaisesRegex(ElementClickInterceptedException, "main intercepted click"):
+            page.click("edit_enrolment", email="u1@example.invalid")
+        self.assertGreater(link.click.call_count, 1)
+
     def test_login_waits_for_the_password_control_moodle_replaces(self):
         for toggles_password in (True, False):
             with self.subTest(toggles_password=toggles_password):
