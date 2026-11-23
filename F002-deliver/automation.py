@@ -369,6 +369,9 @@ def search_case(page, data):
         page.expect_text("submit_confirmation", confirmation)
     if error := data["forbidden_error"]:
         check(page.visible("alert", message=error), None, "unexpected validation")
+    if data["action"] == "save":
+        page.go("participants_url")
+        page.expect_text("course_heading", page.fixture.course)
 
 
 def observe(page, users):
@@ -512,7 +515,7 @@ class BrowserOptions:
 
 
 def error_detail(error):
-    return str(error).splitlines()[0] or type(error).__name__
+    return next(iter(str(error).splitlines()), "") or type(error).__name__
 
 
 def build_suite(module_name, rows, config, options):
@@ -520,7 +523,6 @@ def build_suite(module_name, rows, config, options):
         def __init__(self, data):
             super().__init__(f"test_{data['id']}")
             self.data = data
-            self.status = "PASS"
             self.detail = ""
 
         def id(self):
@@ -551,22 +553,17 @@ def build_suite(module_name, rows, config, options):
             except (Blocked, OSError, ValueError, KeyError, csv.Error, WebDriverException) as error:
                 cls.blocked_reason = error_detail(error)
 
-        def skip_with_status(self, status, detail):
-            self.status = status
-            self.detail = detail
-            self.skipTest(f"{status} | {detail}")
-
         def setUp(self):
             if self.blocked_reason:
-                self.skip_with_status("BLOCKED", self.blocked_reason)
+                raise Blocked(self.blocked_reason)
             if self.data["expected_access"] and not self.credentials["student_password"]:
-                self.skip_with_status("BLOCKED", "Set F002_STUDENT_PASSWORD before running")
+                raise Blocked("Set F002_STUDENT_PASSWORD before running")
             try:
                 fixture = self.fixtures[self.data["fixture_id"] or self.data["id"]]
                 self.page = Moodle(self.driver, self.config, fixture)
                 self.page.prepare(self.credentials, self.data["baseline"])
             except (AssertionError, ValueError, KeyError, WebDriverException) as error:
-                self.skip_with_status("BLOCKED", error_detail(error))
+                raise Blocked(error_detail(error)) from error
 
         def runTest(self):
             if self.data["id"] in FUNCTIONAL_IDS:
@@ -574,7 +571,7 @@ def build_suite(module_name, rows, config, options):
             else:
                 status, self.detail = run_nonfunctional(self.page, self.data)
             if status == "OBSERVED":
-                self.skip_with_status(status, self.detail)
+                self.skipTest(f"OBSERVED | {self.detail}")
 
     for row in rows:
         setattr(EnrolUserCase, f"test_{row['id']}", EnrolUserCase.runTest)
@@ -613,11 +610,12 @@ class EnrolResult(unittest.TestResult):
 
     def addError(self, test, err):
         super().addError(test, err)
-        self.record(test, "FAIL", error_detail(err[1]))
+        status = "BLOCKED" if isinstance(err[1], Blocked) else "FAIL"
+        self.record(test, status, error_detail(err[1]))
 
     def addSkip(self, test, reason):
         super().addSkip(test, reason)
-        self.record(test, test.status, test.detail)
+        self.record(test, "OBSERVED", test.detail)
 
 
 def main(module_name, data_path, config):
@@ -655,4 +653,4 @@ def main(module_name, data_path, config):
         args.results.write_text(json.dumps(result.cases, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     counts = Counter(case["status"] for case in result.cases)
     print(", ".join(f"{status}={counts[status]}" for status in ("PASS", "FAIL", "OBSERVED", "BLOCKED")))
-    return int(not result.wasSuccessful() or counts["BLOCKED"] > 0)
+    return int(not result.wasSuccessful())

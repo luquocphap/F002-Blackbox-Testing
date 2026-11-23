@@ -62,11 +62,11 @@ F002_FIXTURES=.project3-local/setup-level1.txt python -m unittest discover -s le
 F002_FIXTURES=.project3-local/setup-level2.txt python -m unittest discover -s level2 -v
 ```
 
-Dùng `-k TC-002-024` để chọn ca. Nếu thiếu fixture hoặc thông tin đăng nhập, unittest hiển thị ca là `skipped` với lý do `BLOCKED`. TC-002-013 hiển thị `skipped` với lý do `OBSERVED` và ghi nhận thực tế. Dùng lệnh Python trực tiếp ở trên nếu cần báo cáo JSON và mã thoát 1 khi có BLOCKED.
+Dùng `-k TC-002-024` để chọn ca. Nếu thiếu fixture hoặc thông tin đăng nhập, discovery báo lỗi `Blocked` và trả mã thoát 1. TC-002-013 hiển thị `skipped` với lý do `OBSERVED` và ghi nhận thực tế. Lệnh Python trực tiếp hỗ trợ báo cáo JSON với trạng thái `BLOCKED` và cũng trả mã thoát 1.
 
-Các ca TC-002-012, 015 và lần submit đầu của 024 kiểm tra Participants trong tab mới sau khi xác nhận lỗi. Tab ban đầu giữ phiên bản form hiện tại để TC-002-024 có thể sửa ngày.
+TC-002-001 và 003 kiểm tra toast và lỗi required trước khi tải lại Participants để đối chiếu count và dòng U1. TC-002-012, 015 và lần submit đầu của 024 kiểm tra Participants trong tab mới sau khi xác nhận lỗi. TC-002-024 có thể sửa ngày trong tab ban đầu.
 
-Chạy kiểm tra hồi quy cho discovery, CSV và luồng đọc Participants mà không cần Moodle bằng `python -m unittest discover -s checks -v`.
+Chạy kiểm tra hồi quy cho discovery, CSV, luồng đọc Participants và ghi kết quả JSON mà không cần Moodle bằng `python -m unittest discover -s checks -v`.
 
 `.project3-local/` dùng cho setup output, kết quả JSON và log của mỗi lượt. Mật khẩu chỉ cung cấp qua biến môi trường.
 
@@ -94,3 +94,5 @@ Moodle 5.1.9+ (Build 20261117), Chrome headless 158.0.8127.36 và Selenium 4.53.
 Hai lượt đều có 0 FAIL và 0 BLOCKED. Số đo của NFR-002-001 là một lần đo trên mỗi lượt local. Cleanup cuối lượt báo đủ 28/28.
 
 Sau khi chuyển sang unittest, discovery thu thập 30 ca mỗi level. Nhóm xác minh TC-002-012, 013, 015 và 024 chạy lại trên fixture riêng cho mỗi level. Level 1 chạy bằng discovery, Level 2 chạy bằng CLI với `--case` và xuất JSON. Mỗi lượt ghi nhận 3 PASS và 1 OBSERVED ở TC-002-013.
+
+Lượt xác minh tiếp theo chạy TC-002-001, 003 và 013 trên fixture riêng cho mỗi level. Mỗi lượt ghi 2 PASS và 1 OBSERVED. Khi bỏ `F002_FIXTURES`, discovery vẫn thu thập 30 ca mỗi level và trả mã thoát 1. Sáu kiểm thử hồi quy PASS.

@@ -3,17 +3,18 @@
 import csv
 import importlib
 import io
+import json
 import sys
 import tempfile
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
-from unittest.mock import Mock, patch
+from unittest.mock import Mock, call, patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from automation import main, rejected
+from automation import main, read_test_data, rejected, run_functional
 
 
 class RunnerTests(unittest.TestCase):
@@ -75,3 +76,60 @@ class RunnerTests(unittest.TestCase):
         page.go.assert_called_once_with("participants_url")
         page.driver.close.assert_called_once()
         page.driver.switch_to.window.assert_called_once_with("original")
+
+    def test_discovery_is_unsuccessful_when_blocked(self):
+        for level in ("level1", "level2"):
+            with self.subTest(level=level), patch.dict("os.environ", clear=True):
+                module = importlib.import_module(f"{level}.test_enrol_user")
+                suite = unittest.TestLoader().loadTestsFromModule(module)
+                result = suite.run(unittest.TestResult())
+                self.assertEqual(result.testsRun, 30)
+                self.assertFalse(result.wasSuccessful())
+                self.assertEqual(len(result.skipped), 0)
+                self.assertIn("F002_FIXTURES", result.errors[0][1])
+
+    def test_empty_selection_submit_checks_fresh_participants(self):
+        rows = read_test_data(ROOT / "level1/test_data.csv")
+        for data in (row for row in rows if row["id"] in {"TC-002-001", "TC-002-003"}):
+            with self.subTest(case=data["id"]):
+                page = Mock()
+                page.element.return_value.text = data["expected_selection"]
+                page.visible.return_value = None
+                page.elements.side_effect = lambda _name, *, email, page=page: (
+                    [object()] if page.go.called and email == "u1@example.invalid" else []
+                )
+                page.fixture.email.side_effect = lambda user: f"{user}@example.invalid"
+                with self.assertRaisesRegex(AssertionError, "unexpected rows for u1"):
+                    run_functional(page, data, {})
+                self.assertLess(
+                    page.mock_calls.index(call.expect_text("submit_confirmation", "0 enrolled users")),
+                    page.mock_calls.index(call.visible("alert", message="required")),
+                )
+                self.assertLess(
+                    page.mock_calls.index(call.visible("alert", message="required")),
+                    page.mock_calls.index(call.go("participants_url")),
+                )
+
+    def test_cli_writes_json_and_continues_after_empty_exception(self):
+        ids = ("TC-002-001", "TC-002-003")
+        with tempfile.TemporaryDirectory() as directory:
+            report = Path(directory) / "results.json"
+            args = ["runner", "--fixtures", "fixture.txt", "--case", ids[0], "--case", ids[1],
+                    "--results", str(report)]
+            with (
+                patch.object(sys, "argv", args),
+                patch.dict("os.environ", F002_ADMIN_USER="admin", F002_ADMIN_PASSWORD="test-only"),
+                patch("automation.read_fixtures", return_value=dict.fromkeys(ids)),
+                patch("automation.urlopen"),
+                patch("automation.create_browser"),
+                patch("automation.Moodle"),
+                patch("automation.run_functional", side_effect=[AssertionError(), ("PASS", "")]),
+                redirect_stdout(io.StringIO()),
+            ):
+                exit_code = main(__name__, ROOT / "level1/test_data.csv",
+                                 lambda: {"base_url": ("url", "http://localhost")})
+            self.assertEqual(exit_code, 1)
+            self.assertEqual(json.loads(report.read_text(encoding="utf-8")), [
+                {"id": ids[0], "status": "FAIL", "detail": "AssertionError"},
+                {"id": ids[1], "status": "PASS", "detail": ""},
+            ])
