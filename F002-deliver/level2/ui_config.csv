@@ -1,0 +1,41 @@
+name,type,value
+base_url,url,http://127.0.0.1:9501
+login_url,url,/login/index.php
+participants_url,url,/user/index.php?id={courseid}
+course_url,url,/course/view.php?id={courseid}
+denied_url,url,/enrol/index.php?id={courseid}
+grader_url,url,/grade/report/grader/index.php?id={courseid}
+login_user,id,username
+login_password,id,password
+login_button,id,loginbtn
+logged_in,id,user-menu-toggle
+main,css selector,[role=main]
+course_heading,css selector,h1
+participant_count,xpath,"//*[@role='main']//p[contains(normalize-space(.),'participants found')]"
+participant_row,xpath,//*[@role='main']//tr[td[normalize-space(.)='{email}']]
+participant_value,xpath,//*[@role='main']//tr[td[normalize-space(.)='{email}']]//*[normalize-space(.)='{label}']
+edit_enrolment,xpath,//*[@role='main']//tr[td[normalize-space(.)='{email}']]//a[@data-action='editenrolment']
+enrol_button,css selector,[role=main] input[type=submit][value='Enrol users']
+modal,css selector,[data-region='modal-container'][role='dialog'].show
+user_search,css selector,[data-region='modal-container'][role='dialog'].show input[role=combobox]
+suggestions,css selector,[data-region='modal-container'][role='dialog'].show ul[role=listbox]:not([aria-hidden=true])
+suggestion,xpath,"//*[@data-region='modal-container' and @role='dialog' and contains(concat(' ',normalize-space(@class),' '),' show ')]//ul[@role='listbox' and not(@aria-hidden='true')]//*[@role='option' and contains(normalize-space(.),'{email}')]"
+selection,css selector,[data-region='modal-container'][role='dialog'].show .form-autocomplete-selection
+show_more,xpath,"//*[@data-region='modal-container' and @role='dialog' and contains(concat(' ',normalize-space(@class),' '),' show ')]//*[(@role='button' or self::button or self::a) and normalize-space(.)='Show more...']"
+save,css selector,[data-region='modal-container'][role='dialog'].show button[data-action=save]
+cancel,css selector,[data-region='modal-container'][role='dialog'].show button[data-action=cancel]
+alert,xpath,"//*[@role='alert' and contains(normalize-space(.),'{message}')]"
+grade_header,xpath,//table//th[not(@colspan) or @colspan='1'][.//*[normalize-space(.)='{item}']]
+grade_row,xpath,.//tr[*[normalize-space(.)='{email}']]
+grade_table,xpath,ancestor::table[1]
+grade_cell,xpath,./*[position()={column}]
+assign_role,css selector,[data-region='modal-container'][role='dialog'].show #id_roletoassign
+start_mode,css selector,[data-region='modal-container'][role='dialog'].show #id_startdate
+duration,css selector,[data-region='modal-container'][role='dialog'].show #id_duration
+end_enabled,css selector,[data-region='modal-container'][role='dialog'].show #id_timeend_enabled
+start_enabled,css selector,[data-region='modal-container'][role='dialog'].show #id_timestart_enabled
+recover_grades,css selector,[data-region='modal-container'][role='dialog'].show #id_recovergrades
+status,css selector,[data-region='modal-container'][role='dialog'].show #id_status
+form_start_part,css selector,[data-region='modal-container'][role='dialog'].show #id_startdateselect_{part}
+edit_start_part,css selector,[data-region='modal-container'][role='dialog'].show #id_timestart_{part}
+end_part,css selector,[data-region='modal-container'][role='dialog'].show #id_timeend_{part}

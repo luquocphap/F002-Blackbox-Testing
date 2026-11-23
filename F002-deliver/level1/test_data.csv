@@ -1,0 +1,5 @@
+id,flow,baseline,users,search,role,start_choice,start_at,duration_days,end_at,retry_end_at,recovery,change_status,expected_count,expected_users,expected_role,expected_status,expected_edit_status,expected_start,expected_end,expected_days,expected_error,forbidden_error,expected_selection,expected_suggestions,expected_reset_role,expected_reset_duration,expected_access,expected_access_text,second_access,second_access_text,grade_item,expected_grades
+TC-002-005,enrol,0,u1,,Teacher,,,,,,,,1,u1,Teacher,Active,,,,,,,,,,,,,,,,
+TC-002-006,enrol,0,u1,,Non-editing teacher,,,,,,,,1,u1,Non-editing teacher,Active,,,,,,,,,,,,,,,,
+TC-002-007,enrol,0,u1,,Manager,,,,,,,,1,u1,Manager,Active,,,,,,,,,,,,,,,,
+TC-002-012,reject,0,u1,,Student,Choose,S,,S-1m,,,,0,,,,,,,,Invalid enrolment duration,,,,,,,,,,,
