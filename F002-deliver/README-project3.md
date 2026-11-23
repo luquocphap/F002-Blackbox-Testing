@@ -1,6 +1,6 @@
 # Project 3 — Enrol User với Selenium
 
-Cả hai level dùng cùng workflow trong `automation.py`. Bản đầu chạy TC-002-005, 006, 007 và 012 trong [Testcases.md](Testcases.md). Mỗi level có `test_data.csv` chứa input và các cột `expected_*`. Ví dụ, dòng TC-002-005 yêu cầu chọn U1, gán Teacher và kiểm tra tổng cộng một participant, đúng email U1, role Teacher và trạng thái Active.
+Cả hai level dùng cùng workflow trong `automation.py` và chạy đủ TC-002-001 đến TC-002-028 trong [Testcases.md](Testcases.md). Mỗi level có `test_data.csv` chứa input và các cột `expected_*`. Ví dụ, dòng TC-002-005 yêu cầu chọn U1, gán Teacher và kiểm tra tổng cộng một participant, đúng email U1, role Teacher và trạng thái Active.
 
 - **Level 1** đọc dữ liệu từ [level1/test_data.csv](level1/test_data.csv). URL và locator nằm trong [level1/ui.py](level1/ui.py).
 - **Level 2** đọc dữ liệu từ [level2/test_data.csv](level2/test_data.csv) và URL, locator từ [level2/ui_config.csv](level2/ui_config.csv). Cột `name` là tên mà workflow dùng, `type` là kiểu Selenium như `css selector`, `id` hoặc `xpath`, và `value` là URL hoặc selector. Nếu chuyển Moodle sang cổng 9502, sửa `base_url`. Nếu thay đổi selector nút mở form, sửa cặp `type`–`value` tương ứng với `enrol_button`. Các locator kiểm tra count, email, role, trạng thái và điểm cũng nằm trong file này.
@@ -54,6 +54,25 @@ Dùng `--list` để xem mã testcase. Để chạy nhóm đầu, thêm `--case 
 
 `.project3-local/` dùng cho setup output, kết quả JSON và log của mỗi lượt. Mật khẩu chỉ cung cấp qua biến môi trường.
 
-## Kết quả lượt đầu
+## Kiểm thử phi chức năng
 
-Moodle 5.1.9+, Chrome headless 158 và fixture sạch cho mỗi level. Level 1 và Level 2 đều PASS 4/4 (005, 006, 007, 012). Các ca còn lại và hai kiểm thử phi chức năng sẽ được bổ sung vào cùng nhánh.
+Hai ca sau dùng course rỗng của TC-002-002. Cả hai hủy form rồi kiểm tra Participants vẫn rỗng.
+
+| ID | Kiểm tra | Kỳ vọng |
+| --- | --- | --- |
+| NFR-002-001 | Thời gian từ khi nhập username đến khi Selenium thấy đúng gợi ý theo email | Tối đa 3.000 ms trên Moodle local, lấy từ cột `max_ms` |
+| NFR-002-002 | Chọn đúng gợi ý từ ô Select users bằng phím Mũi tên xuống và Enter | Email của user đã chọn xuất hiện trong vùng selection |
+
+## Kết quả thực tế ngày 2026-11-23
+
+Moodle 5.1.9+ (Build 20261117), Chrome headless 158.0.8127.36 và Selenium 4.53.0. Nhóm chạy đầu gồm TC-002-005, 006, 007, 012 và PASS 4/4 ở mỗi level. Mỗi lượt đầy đủ dùng fixture sạch và setup báo 28/28. Lượt Level 2 đầu có TC-002-011 BLOCKED do Selenium gặp phần tử cũ ở bước chuẩn bị. Bảng ghi kết quả lượt chạy lại sau khi bổ sung một lần thử lại bước chuẩn bị và reset fixture.
+
+| Kiểm tra | Level 1 | Level 2 |
+| --- | --- | --- |
+| 28 ca chức năng | 27 PASS, 1 OBSERVED | 27 PASS, 1 OBSERVED |
+| TC-002-013, end bằng start | OBSERVED, `Invalid enrolment duration`, 0 participant | OBSERVED, `Invalid enrolment duration`, 0 participant |
+| TC-002-026, cột F002 Recovery 73 trong Grader report | PASS, U1 = 73.00, U2 và U3 để trống | PASS, U1 = 73.00, U2 và U3 để trống |
+| NFR-002-001, thời gian hiện gợi ý | PASS, 1055 ms | PASS, 1030 ms |
+| NFR-002-002, chọn bằng bàn phím | PASS, đúng email | PASS, đúng email |
+
+Hai lượt đều có 0 FAIL và 0 BLOCKED. Số đo của NFR-002-001 là một lần đo trên mỗi lượt local. Cleanup cuối lượt báo đủ 28/28.

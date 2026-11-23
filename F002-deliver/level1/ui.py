@@ -27,6 +27,7 @@ UI = {
     'save': ('css selector', "[data-region='modal-container'][role='dialog'].show button[data-action=save]"),
     'cancel': ('css selector', "[data-region='modal-container'][role='dialog'].show button[data-action=cancel]"),
     'alert': ('xpath', "//*[@role='alert' and contains(normalize-space(.),'{message}')]"),
+    'submit_confirmation': ('css selector', '.toast.show .toast-message'),
     'grade_header': ('xpath', "//table//th[not(@colspan) or @colspan='1'][.//*[normalize-space(.)='{item}']]"),
     'grade_row': ('xpath', ".//tr[*[normalize-space(.)='{email}']]"),
     'grade_table': ('xpath', 'ancestor::table[1]'),

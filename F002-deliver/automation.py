@@ -148,6 +148,22 @@ class Moodle:
         self.click("login_button")
         self.element("logged_in")
 
+    def prepare(self, credentials, baseline):
+        # Moodle can replace the login DOM during redirect. Retry the read-only
+        # setup once before any enrolment action has taken place.
+        for attempt in range(2):
+            try:
+                self.driver.delete_all_cookies()
+                self.login(credentials["admin_user"], credentials["admin_password"])
+                self.go("participants_url")
+                self.expect_text("course_heading", self.fixture.course)
+                check(self.count(), int(baseline), "fixture participant baseline")
+                return
+            except StaleElementReferenceException:
+                if attempt == 1:
+                    raise
+                print("  Retrying case setup after a stale page element", flush=True)
+
     def select(self, name, **values):
         return Select(self.element(name, **values))
 
@@ -273,11 +289,14 @@ class Moodle:
         header = self.element("grade_header", item=item)
         table = header.find_element(*self.locator("grade_table"))
         column = int(header.get_property("cellIndex")) + 1
-        for user, grade in zip(users, expected, strict=True):
+        actual_grades = []
+        for user in users:
             row = table.find_element(*self.locator("grade_row", email=self.fixture.email(user)))
             actual = row.find_element(*self.locator("grade_cell", column=column)).text.strip()
-            print(f"  {item} {user}={actual!r}", flush=True)
-            check(actual.replace("−", "-"), grade, f"{item} grade for {user}")
+            actual_grades.append(actual.replace("−", "-"))
+        detail = ", ".join(f"{user}={grade}" for user, grade in zip(users, actual_grades, strict=True))
+        check(actual_grades, expected, f"{item} grades for {', '.join(users)}")
+        return f"{item}: {detail}"
 
 
 def items(value):
@@ -317,7 +336,9 @@ def search_case(page, data):
         else:
             page.expect_text("suggestions", suggestion)
     check(page.element("selection").text, data["expected_selection"], "search selection")
-    page.close_form("save" if data["forbidden_error"] else "cancel")
+    page.close_form(data["action"])
+    if confirmation := data["expected_submit"]:
+        page.expect_text("submit_confirmation", confirmation)
     if error := data["forbidden_error"]:
         check(page.visible("alert", message=error), None, "unexpected validation")
 
@@ -404,7 +425,7 @@ def run_functional(page, data, credentials):
         verify_rows(page, data)
 
     if flow == "grades":
-        page.grades(data["grade_item"], expected_users, items(data["expected_grades"]))
+        return "PASS", page.grades(data["grade_item"], expected_users, items(data["expected_grades"]))
     return "PASS", ""
 
 
@@ -497,11 +518,7 @@ def main(directory, config_from_file=None, config=None):
                 try:
                     fixture = fixtures[row.get("fixture_id") or row["id"]]
                     page = Moodle(driver, config, fixture)
-                    driver.delete_all_cookies()
-                    page.login(credentials["admin_user"], credentials["admin_password"])
-                    page.go("participants_url")
-                    page.expect_text("course_heading", fixture.course)
-                    check(page.count(), int(row["baseline"]), "fixture participant baseline")
+                    page.prepare(credentials, row["baseline"])
                 except (AssertionError, ValueError, KeyError, WebDriverException) as error:
                     record(row, "BLOCKED", str(error).splitlines()[0] or type(error).__name__)
                     continue
