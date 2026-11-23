@@ -27,10 +27,10 @@ Mặc định Selenium chạy Chrome headless. Dùng `--headed` để theo dõi 
 
 ## Chạy trên fixture sạch
 
-Copy và lint ba script PHP theo [README fixture](README.md#2-setup-toàn-bộ-fixtures). Lưu nguyên stdout của setup. Runner đọc `course`, `courseid`, `username_prefix`, `S` và `prepared_at` cho từng TC. Chỉ chạy khi setup báo đủ 28/28 và trong cùng ngày UTC với setup.
+Cấu hình REST token và kết nối PostgreSQL theo [README fixture](README.md#2-setup-toàn-bộ-fixtures). Chạy các script Python từ thư mục `F002-deliver/`. Lưu nguyên stdout của setup. Runner đọc `course`, `courseid`, `username_prefix`, `S` và `prepared_at` cho từng TC. Chỉ chạy khi setup báo đủ 28/28 và trong cùng ngày UTC với setup.
 
 ```bash
-docker exec demo-webserver-1 php /tmp/f002-deliver/setup-all.php > .project3-local/setup-level1.txt &&
+python scripts/setup-all.py > .project3-local/setup-level1.txt &&
 tail -1 .project3-local/setup-level1.txt
 
 python level1/test_enrol_user.py --fixtures .project3-local/setup-level1.txt \
@@ -40,15 +40,15 @@ python level1/test_enrol_user.py --fixtures .project3-local/setup-level1.txt \
 Reset sau Level 1 rồi lưu stdout mới cho Level 2.
 
 ```bash
-docker exec demo-webserver-1 php /tmp/f002-deliver/cleanup-all.php &&
-docker exec demo-webserver-1 php /tmp/f002-deliver/setup-all.php > .project3-local/setup-level2.txt &&
+python scripts/cleanup-all.py &&
+python scripts/setup-all.py > .project3-local/setup-level2.txt &&
 tail -1 .project3-local/setup-level2.txt
 
 python level2/test_enrol_user.py --fixtures .project3-local/setup-level2.txt \
   --results .project3-local/level2.json
 ```
 
-Nếu Moodle cài ở thư mục khác, thêm `-e F002_MOODLE_ROOT=/đường/dẫn` ngay sau `docker exec` ở cả lệnh setup và cleanup. Với Moodle 5.1 có thư mục `public/`, giá trị biến trỏ vào thư mục Moodle chứa `config.php`. Cleanup lần cuối theo README.
+Sau lượt cuối, chạy `python scripts/cleanup-all.py`. Khi đổi URL Moodle, cập nhật `F002_MOODLE_URL` cho fixture và cấu hình UI của level đang chạy.
 
 Dùng `--list` để xem mã testcase. Để chạy nhóm đầu, thêm `--case TC-002-005 --case TC-002-006 --case TC-002-007 --case TC-002-012` vào lệnh của từng level. Mỗi case tự đăng nhập Admin và mở trang Participants của course đã được setup. Runner trả mã thoát 1 nếu có FAIL hoặc BLOCKED. TC-002-013 trả OBSERVED khi đã thu được phản hồi và trạng thái lưu. TC-002-026 đọc điểm trong Grader report.
 
@@ -96,3 +96,5 @@ Hai lượt đều có 0 FAIL và 0 BLOCKED. Số đo của NFR-002-001 là mộ
 Sau khi chuyển sang unittest, discovery thu thập 30 ca mỗi level. Nhóm xác minh TC-002-012, 013, 015 và 024 chạy lại trên fixture riêng cho mỗi level. Level 1 chạy bằng discovery, Level 2 chạy bằng CLI với `--case` và xuất JSON. Mỗi lượt ghi nhận 3 PASS và 1 OBSERVED ở TC-002-013.
 
 Lượt xác minh tiếp theo chạy TC-002-001, 003 và 013 trên fixture riêng cho mỗi level. Mỗi lượt ghi 2 PASS và 1 OBSERVED. Khi bỏ `F002_FIXTURES`, discovery vẫn thu thập 30 ca mỗi level và trả mã thoát 1. Sáu kiểm thử hồi quy PASS.
+
+Sau khi chuyển scripts fixture sang Python, hai lượt đầy đủ dùng fixture riêng và đều ghi nhận 29 PASS, 1 OBSERVED (TC-002-013), 0 FAIL và 0 BLOCKED. TC-002-026 xác nhận trong Grader report rằng U1 = 73.00, U2 và U3 không có điểm. NFR-002-001 đo 672 ms ở Level 1 và 1.407 ms ở Level 2.

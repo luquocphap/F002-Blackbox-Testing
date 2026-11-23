@@ -555,7 +555,7 @@ def build_suite(module_name, rows, config, options):
             try:
                 cls.config = config()
                 if options.fixtures is None:
-                    raise Blocked("Set F002_FIXTURES to the stdout captured from setup-all.php")
+                    raise Blocked("Set F002_FIXTURES to the stdout captured from setup-all.py")
                 cls.fixtures = read_fixtures(options.fixtures)
                 cls.credentials = {
                     name: os.environ.get(f"F002_{name.upper()}")
@@ -639,7 +639,7 @@ class EnrolResult(unittest.TestResult):
 def main(module_name, data_path, config):
     defaults = BrowserOptions.from_env()
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--fixtures", type=Path, default=defaults.fixtures, help="Captured stdout from setup-all.php")
+    parser.add_argument("--fixtures", type=Path, default=defaults.fixtures, help="Captured stdout from setup-all.py")
     parser.add_argument("--case", action="append", metavar="ID", help="Limit to these IDs (repeatable)")
     parser.add_argument("--list", action="store_true", help="List IDs without opening Moodle")
     parser.add_argument("--headed", action="store_true")
